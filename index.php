@@ -80,7 +80,7 @@ class MySQLInspector
 
         $tabble_escaped = $this->connection->real_escape_string($table);
 
-        // Получаем общее количество записей
+        // количество записей
         $countResult = $this->connection->query("SELECT COUNT(*) as total FROM `$table`");
         if (!$countResult) {
             throw new Exception("Ошибка получения количества записей: " . $this->connection->error);
@@ -89,13 +89,13 @@ class MySQLInspector
         $totalRecords = $countResult->fetch_assoc()['total'];
         $totalPages = ceil($totalRecords / RECORDS_PER_PAGE);
 
-        // Получаем данные с пагинацией
+        // Данные с пагинацией
         $result = $this->connection->query("SELECT * FROM `$table` LIMIT $offset, $limit");
-        
+
         if (!$result) {
             throw new Exception("Ошибка получения данных: " . $this->connection->error);
         }
-        
+
         $data = [];
         while ($row = $result->fetch_assoc()) {
             $data[] = $row;
@@ -153,6 +153,7 @@ try {
 }
 
 ?>
+
 <!DOCTYPE html>
 <html lang="ru">
 
@@ -160,194 +161,228 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MySQL Web Inspector</title>
-    <link rel="stylesheet" href="styles.css">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .database-list .list-group-item:hover {
+            transform: translateX(5px);
+            transition: transform 0.2s;
+        }
+    </style>
 </head>
 
-<body>
-    <div class="container">
-        <header>
-            <h1>MySQL Web Inspector</h1>
-            <nav class="breadcrumb">
-                <a href="?">Базы данных</a>
-                <?php if (!empty($db_name)): ?>
-                    &raquo; <a href="?db_name=<?= htmlspecialchars($db_name) ?>"><?= htmlspecialchars($db_name) ?></a>
-                <?php endif; ?>
-                <?php if (!empty($table_name)): ?>
-                    &raquo; <span><?= htmlspecialchars($table_name) ?></span>
-                <?php endif; ?>
-            </nav>
+<body class="bg-light">
+    <div class="container mt-4">
+        <!-- Header -->
+        <header class="card mb-4">
+            <div class="card-body">
+                <h1 class="card-title h3 text-primary">MySQL Web Inspector</h1>
+                <nav class="breadcrumb">
+                    <a class="breadcrumb-item" href="?">Базы данных</a>
+                    <?php if (!empty($db_name)): ?>
+                        <a class="breadcrumb-item" href="?db_name=<?= htmlspecialchars($db_name) ?>"><?= htmlspecialchars($db_name) ?></a>
+                    <?php endif; ?>
+                    <?php if (!empty($table_name)): ?>
+                        <span class="breadcrumb-item active"><?= htmlspecialchars($table_name) ?></span>
+                    <?php endif; ?>
+                </nav>
+            </div>
         </header>
 
         <?php if (isset($error)): ?>
-            <div class="error">
+            <div class="alert alert-danger mb-4">
                 <?= htmlspecialchars($error) ?>
             </div>
         <?php endif; ?>
 
-        <main>
-            <?php if (empty($db_name) && empty($table_name)): ?>
-                <!-- Главная страница - список баз данных -->
-                <section class="database-list">
-                    <h2>Базы данных</h2>
-                    <?php if (!empty($databases)): ?>
-                        <ul>
-                            <?php foreach ($databases as $db): ?>
-                                <li>
-                                    <a href="?db_name=<?= htmlspecialchars($db) ?>">
+        <main class="card">
+            <div class="card-body">
+                <?php if (empty($db_name) && empty($table_name)): ?>
+                    <!-- Главная страница - список баз данных -->
+                    <section class="database-list">
+                        <h2 class="h4 mb-3 text-secondary">Базы данных</h2>
+                        <?php if (!empty($databases)): ?>
+                            <div class="list-group">
+                                <?php foreach ($databases as $db): ?>
+                                    <a href="?db_name=<?= htmlspecialchars($db) ?>" class="list-group-item list-group-item-action">
                                         <?= htmlspecialchars($db) ?>
                                     </a>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php else: ?>
-                        <p>Нет доступных баз данных</p>
-                    <?php endif; ?>
-                </section>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <p class="text-muted">Нет доступных баз данных</p>
+                        <?php endif; ?>
+                    </section>
 
-            <?php elseif (!empty($db_name) && empty($table_name)): ?>
-                <!-- Страница базы данных - список таблиц -->
-                <section class="table-list">
-                    <h2>База данных: <?= htmlspecialchars($db_name) ?></h2>
-                    <p>Количество таблиц: <?= count($tables) ?></p>
+                <?php elseif (!empty($db_name) && empty($table_name)): ?>
+                    <!-- Страница базы данных - список таблиц -->
+                    <section class="table-list">
+                        <h2 class="h4 mb-3 text-secondary">База данных: <?= htmlspecialchars($db_name) ?></h2>
+                        <p class="text-muted">Количество таблиц: <?= count($tables) ?></p>
 
-                    <?php if (!empty($tables)): ?>
-                        <ul>
-                            <?php foreach ($tables as $table): ?>
-                                <li>
-                                    <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table) ?>">
+                        <?php if (!empty($tables)): ?>
+                            <div class="list-group">
+                                <?php foreach ($tables as $table): ?>
+                                    <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table) ?>" class="list-group-item list-group-item-action">
                                         <?= htmlspecialchars($table) ?>
                                     </a>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php else: ?>
-                        <p>В этой базе данных нет таблиц</p>
-                    <?php endif; ?>
-                </section>
-
-            <?php elseif (!empty($db_name) && !empty($table_name)): ?>
-                <!-- Страница таблицы -->
-                <section class="table-structure">
-                    <h2>Таблица: <?= htmlspecialchars($table_name) ?></h2>
-
-                    <h3>Структура таблицы</h3>
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Поле</th>
-                                    <th>Тип</th>
-                                    <th>NULL</th>
-                                    <th>Ключ</th>
-                                    <th>По умолчанию</th>
-                                    <th>Extra</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($structure as $column): ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars($column['Field']) ?></strong></td>
-                                        <td><?= htmlspecialchars($column['Type']) ?></td>
-                                        <td><?= htmlspecialchars($column['Null']) ?></td>
-                                        <td><?= htmlspecialchars($column['Key']) ?></td>
-                                        <td><?= htmlspecialchars($column['Default'] ?? 'NULL') ?></td>
-                                        <td><?= htmlspecialchars($column['Extra']) ?></td>
-                                    </tr>
                                 <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
+                            </div>
+                        <?php else: ?>
+                            <p class="text-muted">В этой базе данных нет таблиц</p>
+                        <?php endif; ?>
+                    </section>
 
-                <section class="table-data">
-                    <h3>Данные таблицы</h3>
-                    <p>Всего записей: <?= $tableData['totalRecords'] ?></p>
+                <?php elseif (!empty($db_name) && !empty($table_name)): ?>
+                    <!-- Страница таблицы -->
+                    <section class="table-structure mb-5">
+                        <h2 class="h4 mb-3 text-secondary">Таблица: <?= htmlspecialchars($table_name) ?></h2>
 
-                    <?php if (!empty($tableData['data'])): ?>
-                        <div class="table-container">
-                            <table class="data-table">
-                                <thead>
+                        <h3 class="h5 mb-3">Структура таблицы</h3>
+                        <div class="table-container border rounded">
+                            <table class="table table-striped table-bordered mb-0">
+                                <thead class="table-dark">
                                     <tr>
-                                        <?php foreach (array_keys($tableData['data'][0]) as $column): ?>
-                                            <th><?= htmlspecialchars($column) ?></th>
-                                        <?php endforeach; ?>
+                                        <th>Поле</th>
+                                        <th>Тип</th>
+                                        <th>NULL</th>
+                                        <th>Ключ</th>
+                                        <th>По умолчанию</th>
+                                        <th>Extra</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($tableData['data'] as $row): ?>
+                                    <?php foreach ($structure as $column): ?>
                                         <tr>
-                                            <?php foreach ($row as $value): ?>
-                                                <td><?= htmlspecialchars($value ?? 'NULL') ?></td>
-                                            <?php endforeach; ?>
+                                            <td><strong><?= htmlspecialchars($column['Field']) ?></strong></td>
+                                            <td><code><?= htmlspecialchars($column['Type']) ?></code></td>
+                                            <td><?= htmlspecialchars($column['Null']) ?></td>
+                                            <td><?= htmlspecialchars($column['Key']) ?></td>
+                                            <td><?= htmlspecialchars($column['Default'] ?? 'NULL') ?></td>
+                                            <td><?= htmlspecialchars($column['Extra']) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
                         </div>
+                    </section>
 
-                        <!-- Пагинация -->
-                        <?php if ($tableData['totalPages'] > 1): ?>
-                            <div class="pagination">
-                                <!-- Стрелка -->
-                                <?php if ($tableData['currentPage'] > 1): ?>
-                                    <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['currentPage'] - 1 ?>" class="pagination-btn">
-                                        &lsaquo;
-                                    </a>
-                                <?php endif; ?>
+                    <section class="table-data">
+                        <h3 class="h5 mb-3">Данные таблицы</h3>
+                        <p class="text-muted">Всего записей: <?= $tableData['totalRecords'] ?></p>
 
-                                <!-- Первая -->
-                                <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=1"
-                                    class="pagination-btn <?= $tableData['currentPage'] == 1 ? 'active' : '' ?>">
-                                    1
-                                </a>
+                        <?php if (!empty($tableData['data'])): ?>
+                            <!-- Якорь для скролла -->
+                            <a id="table-data"></a>
 
-                                <!-- Многоточие -->
-                                <?php if ($tableData['currentPage'] > 3): ?>
-                                    <span class="pagination-dots">...</span>
-                                <?php endif; ?>
+                            <div class="table-container border rounded mb-4">
+                                <table class="table table-striped table-bordered table-hover mb-0">
+                                    <thead class="table-primary">
+                                        <tr>
+                                            <?php foreach (array_keys($tableData['data'][0]) as $column): ?>
+                                                <th><?= htmlspecialchars($column) ?></th>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($tableData['data'] as $row): ?>
+                                            <tr>
+                                                <?php foreach ($row as $value): ?>
+                                                    <td><?= htmlspecialchars($value ?? 'NULL') ?></td>
+                                                <?php endforeach; ?>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
 
-                                <!-- Страницы вокруг текущей -->
-                                <?php
-                                $startPage = max(2, $tableData['currentPage'] - 1);
-                                $endPage = min($tableData['totalPages'] - 1, $tableData['currentPage'] + 1);
+                            <!-- Пагинация -->
+                            <?php if ($tableData['totalPages'] > 1): ?>
+                                <nav aria-label="Page navigation">
+                                    <ul class="pagination justify-content-center">
+                                        <!-- Стрелка назад -->
+                                        <?php if ($tableData['currentPage'] > 1): ?>
+                                            <li class="page-item">
+                                                <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['currentPage'] - 1 ?>#table-data">
+                                                    &laquo;
+                                                </a>
+                                            </li>
+                                        <?php endif; ?>
 
-                                for ($i = $startPage; $i <= $endPage; $i++):
-                                    if ($i > 1 && $i < $tableData['totalPages']): ?>
-                                        <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $i ?>"
-                                            class="pagination-btn <?= $i == $tableData['currentPage'] ? 'active' : '' ?>">
-                                            <?= $i ?>
-                                        </a>
-                                <?php endif;
-                                endfor; ?>
+                                        <!-- Первая страница -->
+                                        <li class="page-item <?= $tableData['currentPage'] == 1 ? 'active' : '' ?>">
+                                            <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=1#table-data">
+                                                1
+                                            </a>
+                                        </li>
 
-                                <?php if ($tableData['currentPage'] < $tableData['totalPages'] - 2): ?>
-                                    <span class="pagination-dots">...</span>
-                                <?php endif; ?>
+                                        <!-- Многоточие если нужно -->
+                                        <?php if ($tableData['currentPage'] > 3): ?>
+                                            <li class="page-item disabled">
+                                                <span class="page-link">...</span>
+                                            </li>
+                                        <?php endif; ?>
 
-                                <!-- Последняя -->
-                                <?php if ($tableData['totalPages'] > 1): ?>
-                                    <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['totalPages'] ?>"
-                                        class="pagination-btn <?= $tableData['currentPage'] == $tableData['totalPages'] ? 'active' : '' ?>">
-                                        <?= $tableData['totalPages'] ?>
-                                    </a>
-                                <?php endif; ?>
+                                        <!-- Страницы вокруг текущей -->
+                                        <?php
+                                        $startPage = max(2, $tableData['currentPage'] - 1);
+                                        $endPage = min($tableData['totalPages'] - 1, $tableData['currentPage'] + 1);
 
-                                <!-- Стрелочка-->
-                                <?php if ($tableData['currentPage'] < $tableData['totalPages']): ?>
-                                    <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['currentPage'] + 1 ?>" class="pagination-btn">
-                                        &rsaquo;
-                                    </a>
-                                <?php endif; ?>
+                                        for ($i = $startPage; $i <= $endPage; $i++):
+                                            if ($i > 1 && $i < $tableData['totalPages']): ?>
+                                                <li class="page-item <?= $i == $tableData['currentPage'] ? 'active' : '' ?>">
+                                                    <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $i ?>#table-data">
+                                                        <?= $i ?>
+                                                    </a>
+                                                </li>
+                                        <?php endif;
+                                        endfor; ?>
+
+                                        <!-- Многоточие если нужно -->
+                                        <?php if ($tableData['currentPage'] < $tableData['totalPages'] - 2): ?>
+                                            <li class="page-item disabled">
+                                                <span class="page-link">...</span>
+                                            </li>
+                                        <?php endif; ?>
+
+                                        <!-- Последняя страница -->
+                                        <?php if ($tableData['totalPages'] > 1): ?>
+                                            <li class="page-item <?= $tableData['currentPage'] == $tableData['totalPages'] ? 'active' : '' ?>">
+                                                <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['totalPages'] ?>#table-data">
+                                                    <?= $tableData['totalPages'] ?>
+                                                </a>
+                                            </li>
+                                        <?php endif; ?>
+
+                                        <!-- Стрелка вперед -->
+                                        <?php if ($tableData['currentPage'] < $tableData['totalPages']): ?>
+                                            <li class="page-item">
+                                                <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['currentPage'] + 1 ?>#table-data">
+                                                    &raquo;
+                                                </a>
+                                            </li>
+                                        <?php endif; ?>
+                                    </ul>
+                                </nav>
+                            <?php endif; ?>
+
+                        <?php else: ?>
+                            <div class="alert alert-info">
+                                Таблица не содержит данных
                             </div>
                         <?php endif; ?>
-
-                    <?php else: ?>
-                        <p>Таблица не содержит данных</p>
-                    <?php endif; ?>
-                </section>
-            <?php endif; ?>
+                    </section>
+                <?php endif; ?>
+            </div>
         </main>
     </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <?php $inspector->close(); ?>
 </body>
