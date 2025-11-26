@@ -51,7 +51,7 @@ class MySQLInspector
 
         $this->connection->select_db($database);
         $result = $this->connection->query("SHOW TABLES");
-
+        
         if (!$result) {
             throw new Exception("Ошибка при получении списка таблиц");
         }
@@ -81,7 +81,7 @@ class MySQLInspector
         }
 
         $this->connection->select_db($database);
-        $table_escaped = $this->connection->real_escape_string($table);
+        $table_escaped = escape_sql($this->connection, $table);
         $result = $this->connection->query("DESCRIBE `$table_escaped`");
 
         if (!$result) {
@@ -107,7 +107,7 @@ class MySQLInspector
         $offset = ($page - 1) * RECORDS_PER_PAGE;
         $limit = RECORDS_PER_PAGE;
 
-        $table_escaped = $this->connection->real_escape_string($table);
+        $table_escaped = escape_sql($this->connection, $table);
 
         // количество записей
         $countResult = $this->connection->query("SELECT COUNT(*) as total FROM `$table_escaped`");
@@ -138,6 +138,53 @@ class MySQLInspector
         ];
     }
 
+    /* Получить размеры БД*/
+    public function getAllDatabasesSizes()
+    {
+        $query = "SELECT 
+                    TABLE_SCHEMA as database_name,
+                    ROUND(SUM(DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) as size_mb
+                  FROM information_schema.TABLES 
+                  GROUP BY TABLE_SCHEMA 
+                  ORDER BY size_mb DESC";
+        
+        $result = $this->connection->query($query);
+        
+        $sizes = [];
+        while ($row = $result->fetch_assoc()) {
+            $sizes[] = $row;
+        }
+        
+        return $sizes;
+    }
+
+    /*Получить размеры таблиц*/
+    public function getTableSizes($database)
+    {
+        if (!$this->databaseExists($database)) {
+            throw new Exception("База данных '$database' не найдена");
+        }
+
+        $query = "SELECT 
+                    TABLE_NAME as table_name,
+                    ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) as size_mb
+                  FROM information_schema.TABLES 
+                  WHERE table_schema = ?
+                  ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC";
+        
+        $stmt = $this->connection->prepare($query);
+        $stmt->bind_param('s', $database);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $sizes = [];
+        while ($row = $result->fetch_assoc()) {
+            $sizes[] = $row;
+        }
+        
+        return $sizes;
+    }
+
     public function close()
     {
         if ($this->connection) {
@@ -146,23 +193,27 @@ class MySQLInspector
     }
 }
 
-// Обработка GET параметров
+// Обработка GET 
 $db_name = $_GET['db_name'] ?? '';
 $table_name = $_GET['table_name'] ?? '';
 $page = max(1, intval($_GET['page'] ?? 1));
 
-// экземпляр инспектора
 $inspector = new MySQLInspector();
 
 // Основная логика с простой обработкой ошибок
 try {
     if (!empty($table_name) && !empty($db_name)) {
+        // Страница таблицы
         $structure = $inspector->getTableStructure($db_name, $table_name);
         $tableData = $inspector->getTableData($db_name, $table_name, $page);
     } elseif (!empty($db_name)) {
+        // Страница базы данных
         $tables = $inspector->getTables($db_name);
+        $tableSizes = $inspector->getTableSizes($db_name);
     } else {
+        // Главная страница - список баз данных
         $databases = $inspector->getDatabases();
+        $dbSizes = $inspector->getAllDatabasesSizes();
     }
 } catch (Exception $e) {
     $error = $e->getMessage();
@@ -177,55 +228,82 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MySQL Web Inspector</title>
+    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .table-container {
             overflow-x: auto;
         }
-
         .database-list .list-group-item:hover {
             transform: translateX(5px);
             transition: transform 0.2s;
+        }
+        .chart-scroll-container {
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 10px;
+        }
+        .chart-wrapper {
+            min-width: 800px;
+            height: 400px;
         }
     </style>
 </head>
 
 <body class="bg-light">
     <div class="container mt-4">
+        <!-- Header -->
         <header class="card mb-4">
             <div class="card-body">
                 <h1 class="card-title h3 text-primary">MySQL Web Inspector</h1>
                 <nav class="breadcrumb">
                     <a class="breadcrumb-item" href="?">Базы данных</a>
                     <?php if (!empty($db_name) && !isset($error)): ?>
-                        <a class="breadcrumb-item" href="?db_name=<?= htmlspecialchars($db_name) ?>"><?= htmlspecialchars($db_name) ?></a>
+                        <a class="breadcrumb-item" href="?db_name=<?= escape($db_name) ?>"><?= escape($db_name) ?></a>
                     <?php endif; ?>
                     <?php if (!empty($table_name) && !isset($error)): ?>
-                        <span class="breadcrumb-item active"><?= htmlspecialchars($table_name) ?></span>
+                        <span class="breadcrumb-item active"><?= escape($table_name) ?></span>
                     <?php endif; ?>
                 </nav>
             </div>
         </header>
 
         <?php if (isset($error)): ?>
-            <!--вывод ошибки -->
+            <!-- Простой вывод ошибки -->
             <div class="alert alert-danger mb-4">
                 <h4 class="alert-heading">Ошибка</h4>
-                <?= htmlspecialchars($error) ?>
+                <?= escape($error) ?>
             </div>
         <?php else: ?>
 
             <main class="card">
                 <div class="card-body">
                     <?php if (empty($db_name) && empty($table_name)): ?>
-                        <!-- список баз данных -->
+                        <!-- Главная страница - список баз данных -->
                         <section class="database-list">
                             <h2 class="h4 mb-3 text-secondary">Базы данных</h2>
+                            
+                            <!-- Круговая диаграмма распределения по БД -->
+                            <?php if (!empty($dbSizes)): ?>
+                            <div class="card mb-4">
+                                <div class="card-body">
+                                    <h5 class="card-title">Распределение размера по базам данных</h5>
+                                    <div class="chart-scroll-container">
+                                        <div class="chart-wrapper">
+                                            <canvas id="databaseSizesChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
                             <?php if (!empty($databases)): ?>
                                 <div class="list-group">
                                     <?php foreach ($databases as $db): ?>
-                                        <a href="?db_name=<?= htmlspecialchars($db) ?>" class="list-group-item list-group-item-action">
-                                            <?= htmlspecialchars($db) ?>
+                                        <a href="?db_name=<?= escape($db) ?>" class="list-group-item list-group-item-action">
+                                            <?= escape($db) ?>
                                         </a>
                                     <?php endforeach; ?>
                                 </div>
@@ -235,17 +313,29 @@ try {
                         </section>
 
                     <?php elseif (!empty($db_name) && empty($table_name)): ?>
-                       
-                        <!-- список таблиц -->
+                        <!-- Страница базы данных - список таблиц -->
                         <section class="table-list">
-                            <h2 class="h4 mb-3 text-secondary">База данных: <?= htmlspecialchars($db_name) ?></h2>
-                            <p class="text-muted">Количество таблиц: <?= count($tables) ?></p>
+                            <h2 class="h4 mb-3 text-secondary">База данных: <?= escape($db_name) ?></h2>
+                            
+                            <!-- Круговая диаграмма распределения по таблицам -->
+                            <?php if (!empty($tableSizes)): ?>
+                            <div class="card mb-4">
+                                <div class="card-body">
+                                    <h5 class="card-title">Распределение размера по таблицам</h5>
+                                    <div class="chart-scroll-container">
+                                        <div class="chart-wrapper">
+                                            <canvas id="tableSizesChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
 
                             <?php if (!empty($tables)): ?>
                                 <div class="list-group">
                                     <?php foreach ($tables as $table): ?>
-                                        <a href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table) ?>" class="list-group-item list-group-item-action">
-                                            <?= htmlspecialchars($table) ?>
+                                        <a href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table) ?>" class="list-group-item list-group-item-action">
+                                            <?= escape($table) ?>
                                         </a>
                                     <?php endforeach; ?>
                                 </div>
@@ -255,9 +345,9 @@ try {
                         </section>
 
                     <?php elseif (!empty($db_name) && !empty($table_name)): ?>
-
+                        <!-- Страница таблицы -->
                         <section class="table-structure mb-5">
-                            <h2 class="h4 mb-3 text-secondary">Таблица: <?= htmlspecialchars($table_name) ?></h2>
+                            <h2 class="h4 mb-3 text-secondary">Таблица: <?= escape($table_name) ?></h2>
 
                             <h3 class="h5 mb-3">Структура таблицы</h3>
                             <div class="table-container border rounded">
@@ -275,12 +365,12 @@ try {
                                     <tbody>
                                         <?php foreach ($structure as $column): ?>
                                             <tr>
-                                                <td><strong><?= htmlspecialchars($column['Field']) ?></strong></td>
-                                                <td><code><?= htmlspecialchars($column['Type']) ?></code></td>
-                                                <td><?= htmlspecialchars($column['Null']) ?></td>
-                                                <td><?= htmlspecialchars($column['Key']) ?></td>
-                                                <td><?= htmlspecialchars($column['Default'] ?? 'NULL') ?></td>
-                                                <td><?= htmlspecialchars($column['Extra']) ?></td>
+                                                <td><strong><?= escape($column['Field']) ?></strong></td>
+                                                <td><code><?= escape($column['Type']) ?></code></td>
+                                                <td><?= escape($column['Null']) ?></td>
+                                                <td><?= escape($column['Key']) ?></td>
+                                                <td><?= escape($column['Default'] ?? 'NULL') ?></td>
+                                                <td><?= escape($column['Extra']) ?></td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
@@ -293,7 +383,7 @@ try {
                             <p class="text-muted">Всего записей: <?= $tableData['totalRecords'] ?></p>
 
                             <?php if (!empty($tableData['data'])): ?>
-                                <!-- Якорь -->
+                                <!-- Якорь для скролла -->
                                 <a id="table-data"></a>
 
                                 <div class="table-container border rounded mb-4">
@@ -301,7 +391,7 @@ try {
                                         <thead class="table-primary">
                                             <tr>
                                                 <?php foreach (array_keys($tableData['data'][0]) as $column): ?>
-                                                    <th><?= htmlspecialchars($column) ?></th>
+                                                    <th><?= escape($column) ?></th>
                                                 <?php endforeach; ?>
                                             </tr>
                                         </thead>
@@ -309,7 +399,7 @@ try {
                                             <?php foreach ($tableData['data'] as $row): ?>
                                                 <tr>
                                                     <?php foreach ($row as $value): ?>
-                                                        <td><?= htmlspecialchars($value ?? 'NULL') ?></td>
+                                                        <td><?= escape($value ?? 'NULL') ?></td>
                                                     <?php endforeach; ?>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -324,19 +414,20 @@ try {
                                             <!-- Стрелка назад -->
                                             <?php if ($tableData['currentPage'] > 1): ?>
                                                 <li class="page-item">
-                                                    <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['currentPage'] - 1 ?>#table-data">
+                                                    <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $tableData['currentPage'] - 1 ?>#table-data">
                                                         &laquo;
                                                     </a>
                                                 </li>
                                             <?php endif; ?>
 
+                                            <!-- Первая страница -->
                                             <li class="page-item <?= $tableData['currentPage'] == 1 ? 'active' : '' ?>">
-                                                <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=1#table-data">
+                                                <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=1#table-data">
                                                     1
                                                 </a>
                                             </li>
 
-                                            <!-- Многоточие если нужно -->
+                                            <!-- Многоточие-->
                                             <?php if ($tableData['currentPage'] > 3): ?>
                                                 <li class="page-item disabled">
                                                     <span class="page-link">...</span>
@@ -351,14 +442,14 @@ try {
                                             for ($i = $startPage; $i <= $endPage; $i++):
                                                 if ($i > 1 && $i < $tableData['totalPages']): ?>
                                                     <li class="page-item <?= $i == $tableData['currentPage'] ? 'active' : '' ?>">
-                                                        <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $i ?>#table-data">
+                                                        <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $i ?>#table-data">
                                                             <?= $i ?>
                                                         </a>
                                                     </li>
                                             <?php endif;
                                             endfor; ?>
 
-                                            <!-- Многоточие если нужно -->
+                                            <!-- Многоточие -->
                                             <?php if ($tableData['currentPage'] < $tableData['totalPages'] - 2): ?>
                                                 <li class="page-item disabled">
                                                     <span class="page-link">...</span>
@@ -368,7 +459,7 @@ try {
                                             <!-- Последняя страница -->
                                             <?php if ($tableData['totalPages'] > 1): ?>
                                                 <li class="page-item <?= $tableData['currentPage'] == $tableData['totalPages'] ? 'active' : '' ?>">
-                                                    <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['totalPages'] ?>#table-data">
+                                                    <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $tableData['totalPages'] ?>#table-data">
                                                         <?= $tableData['totalPages'] ?>
                                                     </a>
                                                 </li>
@@ -377,7 +468,7 @@ try {
                                             <!-- Стрелка вперед -->
                                             <?php if ($tableData['currentPage'] < $tableData['totalPages']): ?>
                                                 <li class="page-item">
-                                                    <a class="page-link" href="?db_name=<?= htmlspecialchars($db_name) ?>&table_name=<?= htmlspecialchars($table_name) ?>&page=<?= $tableData['currentPage'] + 1 ?>#table-data">
+                                                    <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $tableData['currentPage'] + 1 ?>#table-data">
                                                         &raquo;
                                                     </a>
                                                 </li>
@@ -400,6 +491,104 @@ try {
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Диаграмма БД
+            <?php if (!empty($dbSizes)): ?>
+            const dbCtx = document.getElementById('databaseSizesChart');
+            if (dbCtx) {
+                new Chart(dbCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: <?= json_encode(array_column($dbSizes, 'database_name')) ?>,
+                        datasets: [{
+                            data: <?= json_encode(array_column($dbSizes, 'size_mb')) ?>,
+                            backgroundColor: [
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Размер баз данных (MB)'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.raw || 0;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = Math.round((value / total) * 100);
+                                        return `${label}: ${value} MB`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            <?php endif; ?>
+
+            // Диаграмма табличек в БДшечках
+            <?php if (!empty($tableSizes)): ?>
+            const tableCtx = document.getElementById('tableSizesChart');
+            if (tableCtx) {
+                new Chart(tableCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: <?= json_encode(array_column($tableSizes, 'table_name')) ?>,
+                        datasets: [{
+                            data: <?= json_encode(array_column($tableSizes, 'size_mb')) ?>,
+                            backgroundColor: [
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Размер таблиц (MB)'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.raw || 0;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = Math.round((value / total) * 100);
+                                        return `${label}: ${value} MB`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            <?php endif; ?>
+        });
+    </script>
 
     <?php $inspector->close(); ?>
 </body>
