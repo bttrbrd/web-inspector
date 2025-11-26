@@ -51,7 +51,7 @@ class MySQLInspector
 
         $this->connection->select_db($database);
         $result = $this->connection->query("SHOW TABLES");
-        
+
         if (!$result) {
             throw new Exception("Ошибка при получении списка таблиц");
         }
@@ -138,7 +138,7 @@ class MySQLInspector
         ];
     }
 
-    /* Получить размеры БД*/
+    /* Получить размеры всех баз данных для диаграммы*/
     public function getAllDatabasesSizes()
     {
         $query = "SELECT 
@@ -147,18 +147,18 @@ class MySQLInspector
                   FROM information_schema.TABLES 
                   GROUP BY TABLE_SCHEMA 
                   ORDER BY size_mb DESC";
-        
+
         $result = $this->connection->query($query);
-        
+
         $sizes = [];
         while ($row = $result->fetch_assoc()) {
             $sizes[] = $row;
         }
-        
+
         return $sizes;
     }
 
-    /*Получить размеры таблиц*/
+    /*Получить размеры таблиц в базе данных для диаграммы*/
     public function getTableSizes($database)
     {
         if (!$this->databaseExists($database)) {
@@ -171,17 +171,17 @@ class MySQLInspector
                   FROM information_schema.TABLES 
                   WHERE table_schema = ?
                   ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC";
-        
+
         $stmt = $this->connection->prepare($query);
         $stmt->bind_param('s', $database);
         $stmt->execute();
         $result = $stmt->get_result();
-        
+
         $sizes = [];
         while ($row = $result->fetch_assoc()) {
             $sizes[] = $row;
         }
-        
+
         return $sizes;
     }
 
@@ -193,11 +193,12 @@ class MySQLInspector
     }
 }
 
-// Обработка GET 
+// Обработка GET параметров
 $db_name = $_GET['db_name'] ?? '';
 $table_name = $_GET['table_name'] ?? '';
 $page = max(1, intval($_GET['page'] ?? 1));
 
+// Создаем экземпляр инспектора
 $inspector = new MySQLInspector();
 
 // Основная логика с простой обработкой ошибок
@@ -236,18 +237,43 @@ try {
         .table-container {
             overflow-x: auto;
         }
+
         .database-list .list-group-item:hover {
             transform: translateX(5px);
             transition: transform 0.2s;
         }
+
         .chart-scroll-container {
             overflow-x: auto;
             overflow-y: hidden;
             padding-bottom: 10px;
         }
+
         .chart-wrapper {
             min-width: 800px;
             height: 400px;
+        }
+
+        .legend-container {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+            border: 2px solid #fff;
         }
     </style>
 </head>
@@ -284,23 +310,9 @@ try {
                         <!-- Главная страница - список баз данных -->
                         <section class="database-list">
                             <h2 class="h4 mb-3 text-secondary">Базы данных</h2>
-                            
-                            <!-- Круговая диаграмма распределения по БД -->
-                            <?php if (!empty($dbSizes)): ?>
-                            <div class="card mb-4">
-                                <div class="card-body">
-                                    <h5 class="card-title">Распределение размера по базам данных</h5>
-                                    <div class="chart-scroll-container">
-                                        <div class="chart-wrapper">
-                                            <canvas id="databaseSizesChart"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <?php endif; ?>
 
                             <?php if (!empty($databases)): ?>
-                                <div class="list-group">
+                                <div class="list-group mb-4">
                                     <?php foreach ($databases as $db): ?>
                                         <a href="?db_name=<?= escape($db) ?>" class="list-group-item list-group-item-action">
                                             <?= escape($db) ?>
@@ -310,29 +322,31 @@ try {
                             <?php else: ?>
                                 <p class="text-muted">Нет доступных баз данных</p>
                             <?php endif; ?>
+
+                            <!-- Круговая диаграмма распределения по БД -->
+                            <?php if (!empty($dbSizes)): ?>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Диаграмма распределения размеров по БД</h5>
+                                        <div class="chart-scroll-container">
+                                            <div class="chart-wrapper">
+                                                <canvas id="databaseSizesChart"></canvas>
+                                            </div>
+                                        </div>
+                                        <!-- Легенда под диаграммой -->
+                                        <div id="databaseLegend" class="legend-container"></div>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         </section>
 
                     <?php elseif (!empty($db_name) && empty($table_name)): ?>
                         <!-- Страница базы данных - список таблиц -->
                         <section class="table-list">
                             <h2 class="h4 mb-3 text-secondary">База данных: <?= escape($db_name) ?></h2>
-                            
-                            <!-- Круговая диаграмма распределения по таблицам -->
-                            <?php if (!empty($tableSizes)): ?>
-                            <div class="card mb-4">
-                                <div class="card-body">
-                                    <h5 class="card-title">Распределение размера по таблицам</h5>
-                                    <div class="chart-scroll-container">
-                                        <div class="chart-wrapper">
-                                            <canvas id="tableSizesChart"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <?php endif; ?>
 
                             <?php if (!empty($tables)): ?>
-                                <div class="list-group">
+                                <div class="list-group mb-4">
                                     <?php foreach ($tables as $table): ?>
                                         <a href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table) ?>" class="list-group-item list-group-item-action">
                                             <?= escape($table) ?>
@@ -341,6 +355,21 @@ try {
                                 </div>
                             <?php else: ?>
                                 <p class="text-muted">В этой базе данных нет таблиц</p>
+                            <?php endif; ?>
+
+                            <?php if (!empty($tableSizes)): ?>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Диаграмма распределения размера по таблицам</h5>
+                                        <div class="chart-scroll-container">
+                                            <div class="chart-wrapper">
+                                                <canvas id="tableSizesChart"></canvas>
+                                            </div>
+                                        </div>
+
+                                        <div id="tableLegend" class="legend-container"></div>
+                                    </div>
+                                </div>
                             <?php endif; ?>
                         </section>
 
@@ -383,7 +412,7 @@ try {
                             <p class="text-muted">Всего записей: <?= $tableData['totalRecords'] ?></p>
 
                             <?php if (!empty($tableData['data'])): ?>
-                                <!-- Якорь для скролла -->
+
                                 <a id="table-data"></a>
 
                                 <div class="table-container border rounded mb-4">
@@ -449,14 +478,12 @@ try {
                                             <?php endif;
                                             endfor; ?>
 
-                                            <!-- Многоточие -->
                                             <?php if ($tableData['currentPage'] < $tableData['totalPages'] - 2): ?>
                                                 <li class="page-item disabled">
                                                     <span class="page-link">...</span>
                                                 </li>
                                             <?php endif; ?>
 
-                                            <!-- Последняя страница -->
                                             <?php if ($tableData['totalPages'] > 1): ?>
                                                 <li class="page-item <?= $tableData['currentPage'] == $tableData['totalPages'] ? 'active' : '' ?>">
                                                     <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $tableData['totalPages'] ?>#table-data">
@@ -465,7 +492,6 @@ try {
                                                 </li>
                                             <?php endif; ?>
 
-                                            <!-- Стрелка вперед -->
                                             <?php if ($tableData['currentPage'] < $tableData['totalPages']): ?>
                                                 <li class="page-item">
                                                     <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $tableData['currentPage'] + 1 ?>#table-data">
@@ -494,98 +520,147 @@ try {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Функция для генерации цветов
+            function generateColors(count) {
+                const baseColors = [
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                    '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                    '#8A2BE2', '#5F9EA0', '#D2691E', '#6495ED',
+                    '#DC143C', '#00CED1', '#9400D3', '#FF1493',
+                    '#00BFFF', '#696969', '#1E90FF', '#B22222'
+                ];
+
+                const colors = [];
+                for (let i = 0; i < count; i++) {
+                    colors.push(baseColors[i % baseColors.length]);
+                }
+                return colors;
+            }
+
+            // Функция для создания кастомной легенды
+            function createCustomLegend(chart, legendContainerId, data) {
+                const legendContainer = document.getElementById(legendContainerId);
+                if (!legendContainer) return;
+
+                legendContainer.innerHTML = '';
+
+                data.labels.forEach((label, index) => {
+                    const value = data.datasets[0].data[index];
+                    const color = data.datasets[0].backgroundColor[index];
+
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+
+                    legendItem.innerHTML = `
+                    <div class="legend-color" style="background-color: ${color}"></div>
+                    <div class="legend-text">
+                        <strong>${label}</strong>: ${value} MB
+                    </div>
+                `;
+
+                    legendContainer.appendChild(legendItem);
+                });
+            }
+
             // Диаграмма БД
             <?php if (!empty($dbSizes)): ?>
-            const dbCtx = document.getElementById('databaseSizesChart');
-            if (dbCtx) {
-                new Chart(dbCtx, {
-                    type: 'pie',
-                    data: {
-                        labels: <?= json_encode(array_column($dbSizes, 'database_name')) ?>,
+                const dbCtx = document.getElementById('databaseSizesChart');
+                if (dbCtx) {
+                    const dbLabels = <?= json_encode(array_column($dbSizes, 'database_name')) ?>;
+                    const dbDataValues = <?= json_encode(array_column($dbSizes, 'size_mb')) ?>;
+                    const dbColors = generateColors(dbLabels.length);
+
+                    const dbData = {
+                        labels: dbLabels,
                         datasets: [{
-                            data: <?= json_encode(array_column($dbSizes, 'size_mb')) ?>,
-                            backgroundColor: [
-                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
-                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
-                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
-                            ],
+                            data: dbDataValues,
+                            backgroundColor: dbColors,
                             borderWidth: 2,
                             borderColor: '#fff'
                         }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                            },
-                            title: {
-                                display: true,
-                                text: 'Размер баз данных (MB)'
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.label || '';
-                                        const value = context.raw || 0;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const percentage = Math.round((value / total) * 100);
-                                        return `${label}: ${value} MB`;
+                    };
+
+                    new Chart(dbCtx, {
+                        type: 'pie',
+                        data: dbData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                title: {
+                                    display: true
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label || '';
+                                            const value = context.raw || 0;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = Math.round((value / total) * 100);
+                                            return `${label}: ${value} MB`;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
-            }
+                    });
+
+                    createCustomLegend(null, 'databaseLegend', dbData);
+                }
             <?php endif; ?>
 
-            // Диаграмма табличек в БДшечках
+            // Диаграмма таблиц
             <?php if (!empty($tableSizes)): ?>
-            const tableCtx = document.getElementById('tableSizesChart');
-            if (tableCtx) {
-                new Chart(tableCtx, {
-                    type: 'pie',
-                    data: {
-                        labels: <?= json_encode(array_column($tableSizes, 'table_name')) ?>,
+                const tableCtx = document.getElementById('tableSizesChart');
+                if (tableCtx) {
+                    const tableLabels = <?= json_encode(array_column($tableSizes, 'table_name')) ?>;
+                    const tableDataValues = <?= json_encode(array_column($tableSizes, 'size_mb')) ?>;
+                    const tableColors = generateColors(tableLabels.length);
+
+                    const tableData = {
+                        labels: tableLabels,
                         datasets: [{
-                            data: <?= json_encode(array_column($tableSizes, 'size_mb')) ?>,
-                            backgroundColor: [
-                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
-                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
-                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
-                            ],
+                            data: tableDataValues,
+                            backgroundColor: tableColors,
                             borderWidth: 2,
                             borderColor: '#fff'
                         }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                            },
-                            title: {
-                                display: true,
-                                text: 'Размер таблиц (MB)'
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.label || '';
-                                        const value = context.raw || 0;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const percentage = Math.round((value / total) * 100);
-                                        return `${label}: ${value} MB`;
+                    };
+
+                    new Chart(tableCtx, {
+                        type: 'pie',
+                        data: tableData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                title: {
+                                    display: true
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label || '';
+                                            const value = context.raw || 0;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = Math.round((value / total) * 100);
+                                            return `${label}: ${value} MB`;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
-            }
+                    });
+
+                    createCustomLegend(null, 'tableLegend', tableData);
+                }
             <?php endif; ?>
         });
     </script>
