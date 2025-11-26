@@ -138,7 +138,6 @@ class MySQLInspector
         ];
     }
 
-    /* Получить размеры всех баз данных для диаграммы*/
     public function getAllDatabasesSizes()
     {
         $query = "SELECT 
@@ -158,7 +157,6 @@ class MySQLInspector
         return $sizes;
     }
 
-    /*Получить размеры таблиц в базе данных для диаграммы*/
     public function getTableSizes($database)
     {
         if (!$this->databaseExists($database)) {
@@ -193,26 +191,25 @@ class MySQLInspector
     }
 }
 
-// Обработка GET параметров
+// Обработка GET 
 $db_name = $_GET['db_name'] ?? '';
 $table_name = $_GET['table_name'] ?? '';
 $page = max(1, intval($_GET['page'] ?? 1));
 
-// Создаем экземпляр инспектора
 $inspector = new MySQLInspector();
 
 // Основная логика с простой обработкой ошибок
 try {
     if (!empty($table_name) && !empty($db_name)) {
-        // Страница таблицы
+        
         $structure = $inspector->getTableStructure($db_name, $table_name);
         $tableData = $inspector->getTableData($db_name, $table_name, $page);
     } elseif (!empty($db_name)) {
-        // Страница базы данных
+        
         $tables = $inspector->getTables($db_name);
         $tableSizes = $inspector->getTableSizes($db_name);
     } else {
-        // Главная страница - список баз данных
+        
         $databases = $inspector->getDatabases();
         $dbSizes = $inspector->getAllDatabasesSizes();
     }
@@ -229,9 +226,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MySQL Web Inspector</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .table-container {
@@ -280,7 +275,6 @@ try {
 
 <body class="bg-light">
     <div class="container mt-4">
-        <!-- Header -->
         <header class="card mb-4">
             <div class="card-body">
                 <h1 class="card-title h3 text-primary">MySQL Web Inspector</h1>
@@ -297,7 +291,6 @@ try {
         </header>
 
         <?php if (isset($error)): ?>
-            <!-- Простой вывод ошибки -->
             <div class="alert alert-danger mb-4">
                 <h4 class="alert-heading">Ошибка</h4>
                 <?= escape($error) ?>
@@ -323,7 +316,6 @@ try {
                                 <p class="text-muted">Нет доступных баз данных</p>
                             <?php endif; ?>
 
-                            <!-- Круговая диаграмма распределения по БД -->
                             <?php if (!empty($dbSizes)): ?>
                                 <div class="card">
                                     <div class="card-body">
@@ -333,7 +325,7 @@ try {
                                                 <canvas id="databaseSizesChart"></canvas>
                                             </div>
                                         </div>
-                                        <!-- Легенда под диаграммой -->
+
                                         <div id="databaseLegend" class="legend-container"></div>
                                     </div>
                                 </div>
@@ -440,7 +432,7 @@ try {
                                 <?php if ($tableData['totalPages'] > 1): ?>
                                     <nav aria-label="Page navigation">
                                         <ul class="pagination justify-content-center">
-                                            <!-- Стрелка назад -->
+                                            
                                             <?php if ($tableData['currentPage'] > 1): ?>
                                                 <li class="page-item">
                                                     <a class="page-link" href="?db_name=<?= escape($db_name) ?>&table_name=<?= escape($table_name) ?>&page=<?= $tableData['currentPage'] - 1 ?>#table-data">
@@ -456,7 +448,6 @@ try {
                                                 </a>
                                             </li>
 
-                                            <!-- Многоточие-->
                                             <?php if ($tableData['currentPage'] > 3): ?>
                                                 <li class="page-item disabled">
                                                     <span class="page-link">...</span>
@@ -515,12 +506,10 @@ try {
         <?php endif; ?>
     </div>
 
-    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Функция для генерации цветов
             function generateColors(count) {
                 const baseColors = [
                     '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
@@ -538,7 +527,6 @@ try {
                 return colors;
             }
 
-            // Функция для создания кастомной легенды
             function createCustomLegend(chart, legendContainerId, data) {
                 const legendContainer = document.getElementById(legendContainerId);
                 if (!legendContainer) return;
